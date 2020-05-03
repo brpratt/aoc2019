@@ -21,23 +21,34 @@ func toIntcode(input []string) []int {
 }
 
 func SolvePart01(program []int) int {
-	var builder strings.Builder
-	c := intcode.NewComputer(program, strings.NewReader("1\n"), &builder)
-	c.Run()
+	in := make(chan int)
+	out := make(chan int)
+	c := intcode.NewComputer(program, in, out)
 
-	lines := strings.Fields(builder.String())
-	result, _ := strconv.Atoi(lines[len(lines)-1])
+	go c.Run()
+	in <- 1
+
+	var result int
+
+	for {
+		r, more := <-out
+		if !more {
+			break
+		}
+		result = r
+	}
+
 	return result
 }
 
 func SolvePart02(program []int) int {
-	var builder strings.Builder
-	c := intcode.NewComputer(program, strings.NewReader("5\n"), &builder)
-	c.Run()
+	in := make(chan int)
+	out := make(chan int)
+	c := intcode.NewComputer(program, in, out)
 
-	lines := strings.Fields(builder.String())
-	result, _ := strconv.Atoi(lines[len(lines)-1])
-	return result
+	go c.Run()
+	in <- 5
+	return <-out
 }
 
 func Solve(part int, input io.Reader) int {

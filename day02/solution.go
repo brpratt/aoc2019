@@ -3,7 +3,6 @@ package day02
 import (
 	"bufio"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 
@@ -22,7 +21,7 @@ func toIntcode(input []string) []int {
 }
 
 func SolvePart01(program []int) int {
-	c := intcode.NewComputer(program, os.Stdin, os.Stderr)
+	c := intcode.NewComputer(program, make(chan int), make(chan int))
 	c.Memory[1] = 12
 	c.Memory[2] = 2
 	c.Run()
@@ -33,7 +32,7 @@ func SolvePart01(program []int) int {
 func SolvePart02(program []int) int {
 	for noun := 0; noun <= 100; noun++ {
 		for verb := 0; verb <= 100; verb++ {
-			c := intcode.NewComputer(program, os.Stdin, os.Stderr)
+			c := intcode.NewComputer(program, make(chan int), make(chan int))
 			c.Memory[1] = noun
 			c.Memory[2] = verb
 			c.Run()

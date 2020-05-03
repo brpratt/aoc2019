@@ -3,7 +3,6 @@ package day07
 import (
 	"aoc2019/intcode"
 	"bufio"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -22,42 +21,20 @@ func toIntcode(input string) []int {
 }
 
 func run(program []int, phases []int) int {
-	inputs := make([]*io.PipeReader, len(phases)+1)
-	outputs := make([]*io.PipeWriter, len(phases)+1)
+	channels := make([]chan int, len(phases)+1)
 
-	for i := 0; i < len(phases)+1; i++ {
-		inputs[i], outputs[i] = io.Pipe()
+	for i := range channels {
+		channels[i] = make(chan int)
 	}
 
 	for i, phase := range phases {
-		input := inputs[i]
-		output := outputs[i+1]
-		c := intcode.NewComputer(program, input, output)
-
-		go func() {
-			err := c.Run()
-			if err != nil {
-				panic(fmt.Sprintf("while executing program: %v", err))
-			}
-
-			err = output.Close()
-			if err != nil {
-				panic(fmt.Sprintf("while closing pipe: %v", err))
-			}
-		}()
-
-		fmt.Fprintln(outputs[i], phase)
+		c := intcode.NewComputer(program, channels[i], channels[i+1])
+		go c.Run()
+		channels[i] <- phase
 	}
 
-	input := outputs[0]
-	output := inputs[len(phases)]
-
-	var signal int
-	fmt.Fprintln(input, 0)
-	fmt.Fscanln(output, &signal)
-
-	input.Close()
-	return signal
+	channels[0] <- 0
+	return <-channels[len(channels)-1]
 }
 
 func heap(k int, nums []int, process func([]int)) {

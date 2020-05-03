@@ -1,19 +1,16 @@
 package intcode
 
 import (
-	"bufio"
 	"fmt"
-	"io"
-	"strconv"
 )
 
 // Computer contains the execution of an intcode program
 type Computer struct {
-	pc      int
-	scanner *bufio.Scanner
-	out     io.Writer
-	Memory  []int
-	Halted  bool
+	pc     int
+	in     <-chan int
+	out    chan<- int
+	Memory []int
+	Halted bool
 }
 
 // Operations
@@ -107,29 +104,10 @@ func (c *Computer) step() error {
 		c.writeInd(c.pc+3, x*y)
 		c.pc += 4
 	case OpInput:
-		if !c.scanner.Scan() {
-			err := c.scanner.Err()
-			if err != nil {
-				return fmt.Errorf("unexpected error while reading input: %v", err)
-			}
-
-			return fmt.Errorf("unexpected end of input")
-		}
-
-		raw := c.scanner.Text()
-		v, err := strconv.Atoi(raw)
-		if err != nil {
-			return fmt.Errorf("unexpected input: %v", err)
-		}
-
-		c.writeInd(c.pc+1, v)
+		c.writeInd(c.pc+1, <-c.in)
 		c.pc += 2
 	case OpOutput:
-		v := c.fetchParam(1, op.Mode1)
-		_, err := fmt.Fprintln(c.out, v)
-		if err != nil {
-			return err
-		}
+		c.out <- c.fetchParam(1, op.Mode1)
 		c.pc += 2
 	case OpJumpIfTrue:
 		x := c.fetchParam(1, op.Mode1)
@@ -173,17 +151,18 @@ func (c *Computer) step() error {
 		c.pc += 4
 	case OpHalt:
 		c.Halted = true
+		close(c.out)
 	}
 
 	return nil
 }
 
 // NewComputer returns a new intcode computer intialized from program
-func NewComputer(program []int, r io.Reader, w io.Writer) Computer {
+func NewComputer(program []int, in <-chan int, out chan<- int) Computer {
 	c := Computer{
-		Memory:  make([]int, len(program)),
-		scanner: bufio.NewScanner(r),
-		out:     w,
+		Memory: make([]int, len(program)),
+		in:     in,
+		out:    out,
 	}
 
 	copy(c.Memory, program)
