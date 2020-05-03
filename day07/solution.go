@@ -20,7 +20,7 @@ func toIntcode(input string) []int {
 	return intcode
 }
 
-func run(program []int, phases []int) int {
+func runSerial(program []int, phases []int) int {
 	channels := make([]chan int, len(phases)+1)
 
 	for i := range channels {
@@ -35,6 +35,34 @@ func run(program []int, phases []int) int {
 
 	channels[0] <- 0
 	return <-channels[len(channels)-1]
+}
+
+func runFeedback(program []int, phases []int) int {
+	channels := make([]chan int, len(phases)+1)
+
+	for i := range channels {
+		channels[i] = make(chan int, 1)
+	}
+
+	for i, phase := range phases {
+		c := intcode.NewComputer(program, channels[i], channels[i+1])
+		go c.Run()
+		channels[i] <- phase
+	}
+
+	channels[0] <- 0
+	var result int
+
+	for {
+		r, more := <-channels[len(channels)-1]
+		if !more {
+			break
+		}
+		result = r
+		channels[0] <- r
+	}
+
+	return result
 }
 
 func heap(k int, nums []int, process func([]int)) {
@@ -71,10 +99,10 @@ func permutations(nums []int) [][]int {
 
 func SolvePart01(program []int) int {
 	options := permutations([]int{0, 1, 2, 3, 4})
-	max := run(program, options[0])
+	max := runSerial(program, options[0])
 
 	for i := 1; i < len(options); i++ {
-		out := run(program, options[i])
+		out := runSerial(program, options[i])
 		if out > max {
 			max = out
 		}
@@ -84,7 +112,17 @@ func SolvePart01(program []int) int {
 }
 
 func SolvePart02(program []int) int {
-	return 0
+	options := permutations([]int{5, 6, 7, 8, 9})
+	max := runFeedback(program, options[0])
+
+	for i := 1; i < len(options); i++ {
+		out := runFeedback(program, options[i])
+		if out > max {
+			max = out
+		}
+	}
+
+	return max
 }
 
 func Solve(part int, input io.Reader) int {
