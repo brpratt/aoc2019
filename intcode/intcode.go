@@ -7,6 +7,7 @@ import (
 // Computer contains the execution of an intcode program
 type Computer struct {
 	pc     int
+	rel    int
 	in     <-chan int
 	out    chan<- int
 	Memory []int
@@ -23,6 +24,7 @@ const (
 	OpJumpIfFalse = 6
 	OpLessThan    = 7
 	OpEquals      = 8
+	OpAdjustRel   = 9
 	OpHalt        = 99
 )
 
@@ -30,6 +32,7 @@ const (
 const (
 	ModePosition  = 0
 	ModeImmediate = 1
+	ModeRelative  = 2
 )
 
 // Instruction represents the information contained in an opcode
@@ -48,42 +51,64 @@ func Decode(opcode int) (Instruction, error) {
 		return Instruction{}, fmt.Errorf("illegal operation %d in opcode %d", op, opcode)
 	}
 
-	if op > 8 && op != 99 {
+	if op > 9 && op != 99 {
 		return Instruction{}, fmt.Errorf("illegal operation %d in opcode %d", op, opcode)
 	}
 
 	mode1 := (opcode / 100) % 10
-	if mode1 != ModePosition && mode1 != ModeImmediate {
+	if mode1 != ModePosition && mode1 != ModeImmediate && mode1 != ModeRelative {
 		return Instruction{}, fmt.Errorf("illegal mode %d for parameter 1 in opcode %d", mode1, opcode)
 	}
 
 	mode2 := (opcode / 1000) % 10
-	if mode2 != ModePosition && mode2 != ModeImmediate {
+	if mode2 != ModePosition && mode2 != ModeImmediate && mode2 != ModeRelative {
 		return Instruction{}, fmt.Errorf("illegal mode %d for parameter 2 in opcode %d", mode2, opcode)
 	}
 
 	mode3 := (opcode / 10000) % 10
-	if mode3 != ModePosition && mode3 != ModeImmediate {
+	if mode3 != ModePosition && mode3 != ModeImmediate && mode3 != ModeRelative {
 		return Instruction{}, fmt.Errorf("illegal mode %d for parameter 3 in opcode %d", mode3, opcode)
 	}
 
 	return Instruction{op, mode1, mode2, mode3}, nil
 }
 
-func (c *Computer) readInd(addr int) int {
-	return c.Memory[c.Memory[addr]]
+func (c *Computer) expand(addr int) {
+	if addr >= len(c.Memory) {
+		memory := make([]int, addr+1)
+		copy(memory, c.Memory)
+		c.Memory = memory
+	}
 }
 
-func (c *Computer) writeInd(addr int, value int) {
-	c.Memory[c.Memory[addr]] = value
+func (c *Computer) read(addr int) int {
+	c.expand(addr)
+	return c.Memory[addr]
 }
 
-func (c *Computer) fetchParam(offset, mode int) int {
+func (c *Computer) write(addr, value int) {
+	c.expand(addr)
+	c.Memory[addr] = value
+}
+
+func (c *Computer) fetch(param, mode int) int {
 	if mode == ModePosition {
-		return c.readInd(c.pc + offset)
+		return c.read(param)
 	}
 
-	return c.Memory[c.pc+offset]
+	if mode == ModeRelative {
+		return c.read(param + c.rel)
+	}
+
+	return param
+}
+
+func (c *Computer) place(param, value, mode int) {
+	if mode == ModePosition {
+		c.write(param, value)
+	} else {
+		c.write(param+c.rel, value)
+	}
 }
 
 func (c *Computer) step() error {
@@ -94,24 +119,24 @@ func (c *Computer) step() error {
 
 	switch op.Op {
 	case OpAdd:
-		x := c.fetchParam(1, op.Mode1)
-		y := c.fetchParam(2, op.Mode2)
-		c.writeInd(c.pc+3, x+y)
+		x := c.fetch(c.Memory[c.pc+1], op.Mode1)
+		y := c.fetch(c.Memory[c.pc+2], op.Mode2)
+		c.place(c.Memory[c.pc+3], x+y, op.Mode3)
 		c.pc += 4
 	case OpMultiply:
-		x := c.fetchParam(1, op.Mode1)
-		y := c.fetchParam(2, op.Mode2)
-		c.writeInd(c.pc+3, x*y)
+		x := c.fetch(c.Memory[c.pc+1], op.Mode1)
+		y := c.fetch(c.Memory[c.pc+2], op.Mode2)
+		c.place(c.Memory[c.pc+3], x*y, op.Mode3)
 		c.pc += 4
 	case OpInput:
-		c.writeInd(c.pc+1, <-c.in)
+		c.place(c.Memory[c.pc+1], <-c.in, op.Mode1)
 		c.pc += 2
 	case OpOutput:
-		c.out <- c.fetchParam(1, op.Mode1)
+		c.out <- c.fetch(c.Memory[c.pc+1], op.Mode1)
 		c.pc += 2
 	case OpJumpIfTrue:
-		x := c.fetchParam(1, op.Mode1)
-		y := c.fetchParam(2, op.Mode2)
+		x := c.fetch(c.Memory[c.pc+1], op.Mode1)
+		y := c.fetch(c.Memory[c.pc+2], op.Mode2)
 
 		if x == 0 {
 			c.pc += 3
@@ -119,8 +144,8 @@ func (c *Computer) step() error {
 			c.pc = y
 		}
 	case OpJumpIfFalse:
-		x := c.fetchParam(1, op.Mode1)
-		y := c.fetchParam(2, op.Mode2)
+		x := c.fetch(c.Memory[c.pc+1], op.Mode1)
+		y := c.fetch(c.Memory[c.pc+2], op.Mode2)
 
 		if x == 0 {
 			c.pc = y
@@ -128,27 +153,31 @@ func (c *Computer) step() error {
 			c.pc += 3
 		}
 	case OpLessThan:
-		x := c.fetchParam(1, op.Mode1)
-		y := c.fetchParam(2, op.Mode2)
+		x := c.fetch(c.Memory[c.pc+1], op.Mode1)
+		y := c.fetch(c.Memory[c.pc+2], op.Mode2)
 
 		if x < y {
-			c.writeInd(c.pc+3, 1)
+			c.place(c.Memory[c.pc+3], 1, op.Mode3)
 		} else {
-			c.writeInd(c.pc+3, 0)
+			c.place(c.Memory[c.pc+3], 0, op.Mode3)
 		}
 
 		c.pc += 4
 	case OpEquals:
-		x := c.fetchParam(1, op.Mode1)
-		y := c.fetchParam(2, op.Mode2)
+		x := c.fetch(c.Memory[c.pc+1], op.Mode1)
+		y := c.fetch(c.Memory[c.pc+2], op.Mode2)
 
 		if x == y {
-			c.writeInd(c.pc+3, 1)
+			c.place(c.Memory[c.pc+3], 1, op.Mode3)
 		} else {
-			c.writeInd(c.pc+3, 0)
+			c.place(c.Memory[c.pc+3], 0, op.Mode3)
 		}
 
 		c.pc += 4
+	case OpAdjustRel:
+		x := c.fetch(c.Memory[c.pc+1], op.Mode1)
+		c.rel += x
+		c.pc += 2
 	case OpHalt:
 		c.Halted = true
 		close(c.out)

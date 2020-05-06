@@ -204,40 +204,40 @@ func TestMoreOps(t *testing.T) {
 			[]int{0},
 		},
 		{
-			"Test equal to 8 (3)",
+			"Test less than 8 (1)",
 			[]int{3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8},
 			[]int{8},
-			[]int{1},
+			[]int{0},
 		},
 		{
-			"Test equal to 8 (4)",
+			"Test less than 8 (2)",
 			[]int{3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8},
 			[]int{3},
-			[]int{0},
+			[]int{1},
 		},
 		{
-			"Test equal to 0 (1)",
+			"Test not equal to 0 (1)",
 			[]int{3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9},
 			[]int{0},
-			[]int{1},
+			[]int{0},
 		},
 		{
-			"Test equal to 0 (2)",
+			"Test not equal to 0 (2)",
 			[]int{3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9},
 			[]int{1},
-			[]int{0},
-		},
-		{
-			"Test equal to 0 (3)",
-			[]int{3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1},
-			[]int{0},
 			[]int{1},
 		},
 		{
-			"Test equal to 0 (4)",
+			"Test not equal to 0 (3)",
+			[]int{3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1},
+			[]int{0},
+			[]int{0},
+		},
+		{
+			"Test not equal to 0 (4)",
 			[]int{3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1},
 			[]int{1},
-			[]int{0},
+			[]int{1},
 		},
 		{
 			"Test less than, equal, or greater than 8 (1)",
@@ -291,12 +291,105 @@ func TestMoreOps(t *testing.T) {
 		}()
 
 		err := c.Run()
-		<-inputDone
-		<-outputDone
-
 		if err != nil {
 			t.Errorf("unexpected error in program '%s': %v", test.name, err)
 			continue
+		}
+
+		<-inputDone
+		<-outputDone
+
+		if inputCount != len(test.input) {
+			t.Errorf("failed to read all input for program '%s'", test.name)
+			continue
+		}
+
+		if !reflect.DeepEqual(test.output, output) {
+			t.Errorf("unexpected output for program '%s': expected %q, got %q", test.name, test.output, output)
+		}
+	}
+}
+
+func TestCompleteFeatures(t *testing.T) {
+	tests := []struct {
+		name    string
+		program []int
+		input   []int
+		output  []int
+	}{
+		{
+			"Test relative adjust",
+			[]int{109, 2, 204, -2, 99},
+			[]int{},
+			[]int{109},
+		},
+		{
+			"Test quine",
+			[]int{109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99},
+			[]int{},
+			[]int{109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99},
+		},
+		{
+			"Test output 16 digit number",
+			[]int{1102, 34915192, 34915192, 7, 4, 7, 99, 0},
+			[]int{},
+			[]int{1219070632396864},
+		},
+		{
+			"Test output middle number",
+			[]int{104, 1125899906842624, 99},
+			[]int{},
+			[]int{1125899906842624},
+		},
+	}
+
+	for _, test := range tests {
+		in := make(chan int)
+		out := make(chan int)
+		inputDone := make(chan bool)
+		outputDone := make(chan bool)
+		var inputCount int
+		output := make([]int, 0)
+
+		c := NewComputer(test.program, in, out)
+
+		go func() {
+			for _, v := range test.input {
+				inputCount++
+				in <- v
+			}
+
+			close(in)
+			inputDone <- true
+		}()
+
+		go func() {
+			for {
+				v, more := <-out
+				if !more {
+					outputDone <- true
+					return
+				}
+				output = append(output, v)
+			}
+		}()
+
+		err := c.Run()
+		if err != nil {
+			t.Errorf("unexpected error in program '%s': %v", test.name, err)
+			continue
+		}
+
+		<-inputDone
+		<-outputDone
+
+		if inputCount != len(test.input) {
+			t.Errorf("failed to read all input for program '%s'", test.name)
+			continue
+		}
+
+		if !reflect.DeepEqual(test.output, output) {
+			t.Errorf("unexpected output for program '%s': expected %q, got %q", test.name, test.output, output)
 		}
 	}
 }
