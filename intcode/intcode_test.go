@@ -40,7 +40,7 @@ func TestDecode(t *testing.T) {
 		{-1, true, Instruction{}},
 		{1002, false, Instruction{OpMultiply, ModePosition, ModeImmediate, ModePosition}},
 		{11101, false, Instruction{OpAdd, ModeImmediate, ModeImmediate, ModeImmediate}},
-		{20001, true, Instruction{}},
+		{20001, false, Instruction{OpAdd, ModePosition, ModePosition, ModeRelative}},
 	}
 
 	for _, test := range tests {
