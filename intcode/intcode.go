@@ -10,9 +10,16 @@ type Computer struct {
 	rel    int
 	in     <-chan int
 	out    chan<- int
+	signal chan<- int
 	Memory []int
 	Halted bool
 }
+
+// Signals
+const (
+	SignalIn = iota
+	SignalOut
+)
 
 // Operations
 const (
@@ -129,9 +136,15 @@ func (c *Computer) step() error {
 		c.place(c.Memory[c.pc+3], x*y, op.Mode3)
 		c.pc += 4
 	case OpInput:
+		if c.signal != nil {
+			c.signal <- SignalIn
+		}
 		c.place(c.Memory[c.pc+1], <-c.in, op.Mode1)
 		c.pc += 2
 	case OpOutput:
+		if c.signal != nil {
+			c.signal <- SignalOut
+		}
 		c.out <- c.fetch(c.Memory[c.pc+1], op.Mode1)
 		c.pc += 2
 	case OpJumpIfTrue:
@@ -180,6 +193,9 @@ func (c *Computer) step() error {
 		c.pc += 2
 	case OpHalt:
 		c.Halted = true
+		if c.signal != nil {
+			close(c.signal)
+		}
 		close(c.out)
 	}
 
@@ -197,6 +213,10 @@ func NewComputer(program []int, in <-chan int, out chan<- int) Computer {
 	copy(c.Memory, program)
 
 	return c
+}
+
+func (c *Computer) AddSignalHandler(ch chan int) {
+	c.signal = ch
 }
 
 // Run runs the program until halted

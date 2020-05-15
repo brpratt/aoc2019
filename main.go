@@ -17,6 +17,7 @@ import (
 	"aoc2019/day10"
 	"aoc2019/day11"
 	"aoc2019/day12"
+	"aoc2019/day13"
 )
 
 type solution = func(int)
@@ -34,6 +35,7 @@ var solutions = []solution{
 	solveDay10,
 	solveDay11,
 	solveDay12,
+	solveDay13,
 }
 
 func withFile(solver func(int, io.Reader) int, part int, filename string) int {
@@ -93,6 +95,10 @@ func solveDay11(part int) {
 
 func solveDay12(part int) {
 	fmt.Println(day12.Solve(part))
+}
+
+func solveDay13(part int) {
+	fmt.Println(withFile(day13.Solve, part, "day13/input.txt"))
 }
 
 func main() {
